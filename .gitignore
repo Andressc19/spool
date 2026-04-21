@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+venv/
+.venv/
+ENV/
+
+# Output
+chatgpt-export/
+chatgpt-export.zip
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
