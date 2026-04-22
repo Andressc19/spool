@@ -308,7 +308,7 @@
     return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
 
-  // ── Fetch conversations with cursor-based pagination ─────────────────
+  // ── Fetch conversations with pagination ─────────────────
 
   let conversations = [];
   try {
@@ -317,13 +317,15 @@
       page++;
       const params = cursor ? `limit=${PAGE_SIZE}&cursor=${cursor}` : `offset=${offset}&limit=${PAGE_SIZE}`;
       const data = await apiGet(`conversations?${params}`);
-      console.log(`[Spool] Page ${page}: got ${(data.items || []).length} items, total=${data.total}, next_cursor=${data.next_cursor}, has_more=${data.has_more}`);
       const items = data.items || [];
+      const total = data.total || 0;
+      const hasMore = data.has_more !== undefined ? data.has_more : items.length >= PAGE_SIZE;
+      console.log(`[Spool] Page ${page}: got ${items.length} items, total=${total}, has_more=${hasMore}, next_cursor=${data.next_cursor}`);
       if (!items.length) break;
       conversations.push(...items);
       if (data.next_cursor) { cursor = data.next_cursor; offset = 0; }
-      else { offset += PAGE_SIZE; if (!data.has_more || offset >= (data.total || 0)) break; }
-      showLoading(`Loading conversations... ${conversations.length}${data.total ? ` / ${data.total}` : ""}`);
+      else { offset += PAGE_SIZE; if (!hasMore || offset >= total) break; }
+      showLoading(`Loading conversations... ${conversations.length}${total ? ` / ${total}` : ""}`);
       await sleep(DELAY);
     }
     console.log(`[Spool] Total loaded: ${conversations.length} conversations`);
@@ -347,8 +349,12 @@
   // ── Date helpers ─────────────────────────────────────────────────────
 
   function formatDate(ts) {
-    if (!ts) return ""; const d = new Date(ts * 1000);
-    return d.toISOString().slice(0, 16).replace("T"," ") + " UTC";
+    if (!ts) return "";
+    try {
+      const ms = typeof ts === "number" ? ts * 1000 : parseInt(ts) * 1000;
+      if (isNaN(ms)) return "Unknown date";
+      return new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+    } catch { return "Unknown date"; }
   }
 
   function dateFilter(conv, preset) {
