@@ -397,9 +397,9 @@
     const list = document.getElementById("spool-list");
     list.innerHTML = state.filtered.map(c => {
       const sel = state.selected.has(c.id);
-      const files = c.has_files || 0;
-      const date = formatDate(c.update_time);
-      const msgs = c.message_count || "?";
+      const files = c.has_files || c.attachment_count || 0;
+      const date = formatDate(c.update_time || c.id);
+      const msgs = c.num_total_messages || c.message_count || "?";
       return `<div class="spool-conv-item${sel ? " selected" : ""}" data-id="${c.id}">
         <input type="checkbox"${sel ? " checked" : ""} data-cb="${c.id}">
         <div class="spool-conv-info">
@@ -440,18 +440,16 @@
     const conv = state.all.find(c => c.id === id);
     if (!conv) { preview.innerHTML = '<div class="spool-preview-empty">Conversation not found</div>'; return; }
 
-    state.activeId = id;
-    const date = formatDate(conv.create_time);
+state.activeId = id;
+    const date = formatDate(conv.update_time || conv.id);
     const title = escapeHtml(conv.title || "Untitled");
-    const files = conv.has_files || 0;
+    const files = conv.has_files || conv.attachment_count || 0;
+    const msgs = conv.num_total_messages || conv.message_count || "?";
 
     preview.innerHTML = `
       <div class="spool-preview-header">
         <h3>${title}</h3>
-        <div class="date">${date} · ${conv.message_count || "?"} msgs</div>
-      </div>
-      <div class="spool-preview-body" id="spool-preview-content">
-        <div class="spool-preview-empty">Loading preview...</div>
+        <div class="date">${date} · ${msgs} msgs</div>
       </div>`;
 
     // Load actual conversation for preview
