@@ -4,9 +4,11 @@ Userscript to export ChatGPT conversations.
 
 ## Installation
 
-1. Install [TamperMonkey](https://tampermonkey.net)
-2. Create new script → paste content from `spool.user.js`
+1. Install [TamperMonkey](https://tampermonkey.net) browser extension
 
+2. Create new script 
+![new-script](docs/img/new-script.png)
+paste content from `spool.user.js`
 ## Usage
 
 1. Go to chatgpt.com
@@ -18,7 +20,6 @@ Userscript to export ChatGPT conversations.
 
 - Individual conversation selection
 - Preview before exporting
-- Date filter (week/month/year)
 - Search by title
 - Export as JSON + Markdown + ZIP
 
