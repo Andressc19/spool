@@ -18,7 +18,29 @@
 // Spool - ChatGPT Conversation Exporter
 // Inspired by: https://gist.github.com/ocombe/1d7604bd29a91ceb716304ef8b5aa4b5
 // License: MIT - see LICENSE file
-// ═════════════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Auto-add floating button on page load
+(function addFloatingButton() {
+  if (document.getElementById("spool-fab")) return;
+  const fab = document.createElement("button");
+  fab.id = "spool-fab";
+  fab.title = "Open Spool - ChatGPT Exporter";
+  fab.innerHTML = "📦";
+  fab.onclick = () => { window.location.reload(); };
+  Object.assign(fab.style, {
+    position: "fixed", bottom: "20px", right: "20px",
+    width: "50px", height: "50px",
+    borderRadius: "50%", border: "none",
+    background: "#3b82f6", color: "#fff",
+    fontSize: "22px", cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    zIndex: "9999", transition: "transform 0.2s",
+  });
+  fab.onmouseenter = () => fab.style.transform = "scale(1.1)";
+  fab.onmouseleave = () => fab.style.transform = "scale(1)";
+  document.body.appendChild(fab);
+})();
 
 (async () => {
   if (document.getElementById("spool-overlay")) return;
@@ -38,7 +60,28 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // ── Storage helpers ──────────────────────────────────────────────��──────
+  // ── UI State helpers ───────────────────────────────────────────────
+
+  function showLoading(msg = "Loading...") {
+    document.getElementById("spool-list").innerHTML = `<div class="spool-loading">${msg}</div>`;
+    document.getElementById("spool-preview").innerHTML = '<div class="spool-preview-empty">Select a conversation to preview</div>';
+    document.getElementById("spool-stats").textContent = "Loading...";
+  }
+
+  function showError(msg, canRetry = true) {
+    const retryBtn = canRetry ? '<button id="spool-retry" class="spool-btn spool-btn-sm" style="margin-top:8px">Retry</button>' : '';
+    document.getElementById("spool-list").innerHTML = `<div class="spool-error">
+      <div class="spool-error-icon">⚠️</div>
+      <div class="spool-error-msg">${escapeHtml(msg)}</div>
+      ${retryBtn}
+    </div>`;
+    document.getElementById("spool-stats").textContent = "Error";
+    if (canRetry) {
+      document.getElementById("spool-retry").onclick = () => window.location.reload();
+    }
+  }
+
+  // ── Storage helpers ───────────────────────────────────────────────
 
   function loadSelections() {
     try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
@@ -98,72 +141,84 @@
     </div>`;
 
   document.head.insertAdjacentHTML("beforeend", `<style>
-    #spool-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+    #spool-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
     #spool-overlay * { box-sizing:border-box;margin:0;padding:0 }
-    .spool-modal { background:#0f172a;border-radius:16px;width:min(96vw,900px);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,0.5) }
+    .spool-modal { background:#0f172a;border-radius:16px;width:min(96vw,1000px);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,0.5) }
     .spool-header { display:flex;align-items:center;gap:12px;padding:20px 24px;border-bottom:1px solid #1e293b }
-    .spool-logo { font-size:28px }
-    .spool-title-area h2 { color:#f8fafc;font-size:20px }
-    .spool-subtitle { color:#64748b;font-size:12px }
-    .spool-close { margin-left:auto;background:none;border:none;color:#94a3b8;font-size:24px;cursor:pointer }
+    .spool-logo { font-size:32px }
+    .spool-title-area h2 { color:#f8fafc;font-size:24px }
+    .spool-subtitle { color:#64748b;font-size:14px }
+    .spool-close { margin-left:auto;background:none;border:none;color:#94a3b8;font-size:28px;cursor:pointer }
     .spool-close:hover { color:#fff }
-    .spool-toolbar { display:flex;gap:8px;padding:12px 24px;border-bottom:1px solid #1e293b;flex-wrap:wrap;align-items:center }
-    .spool-toolbar input { flex:1;min-width:120px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:6px 12px;font-size:13px }
+    .spool-toolbar { display:flex;gap:12px;padding:16px 24px;border-bottom:1px solid #1e293b;flex-wrap:wrap;align-items:center }
+    .spool-toolbar input { flex:1;min-width:160px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px 14px;font-size:14px }
     .spool-toolbar input:focus { outline:none;border-color:#3b82f6 }
     .spool-toolbar input::placeholder { color:#475569 }
-    .spool-toolbar select { background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:6px 8px;font-size:13px }
-    .spool-btn { border:none;border-radius:8px;cursor:pointer;font-size:13px;transition:background 0.2s }
-    .spool-btn-sm { padding:6px 12px;background:#334155;color:#e2e8f0 }
+    .spool-toolbar select { background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:14px }
+    .spool-btn { border:none;border-radius:8px;cursor:pointer;font-size:14px;transition:background 0.2s }
+    .spool-btn-sm { padding:8px 14px;background:#334155;color:#e2e8f0 }
     .spool-btn-sm:hover { background:#475569 }
-    .spool-body { display:flex;flex:1;overflow:hidden;min-height:0 }
-    .spool-list { flex:1;overflow-y:auto;padding:12px;border-right:1px solid #1e293b;min-width:0 }
-    .spool-preview { width:min(380px,45%);overflow-y:auto;padding:12px;background:#0f172a }
-    .spool-preview-empty { color:#475569;font-size:13px;text-align:center;margin-top:24px }
-    .spool-conv-item { display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:8px;cursor:pointer;margin-bottom:4px }
+    .spool-body { display:flex;flex:1;overflow:hidden;min-height:400px }
+    .spool-list { flex:1;overflow-y:auto;padding:16px;border-right:1px solid #1e293b;min-width:0;min-height:350px }
+    .spool-preview { width:min(420px,45%);overflow-y:auto;padding:16px;background:#0f172a;min-height:350px }
+    .spool-preview-empty { color:#475569;font-size:14px;text-align:center;margin-top:48px }
+    .spool-loading { color:#94a3b8;font-size:16px;text-align:center;margin-top:48px }
+    .spool-error { color:#fecaca;font-size:16px;text-align:center;margin-top:48px }
+    .spool-error-icon { font-size:36px;margin-bottom:12px }
+    .spool-error-msg { color:#f87171;font-size:14px;max-width:300px;margin:0 auto }
+    .spool-conv-item { display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:8px;cursor:pointer;margin-bottom:6px }
     .spool-conv-item:hover { background:#1e293b }
     .spool-conv-item.selected { background:#1e3a5f }
-    .spool-conv-item input[type="checkbox"] { margin-top:2px;accent-color:#3b82f6;width:16px;height:16px;cursor:pointer;flex-shrink:0 }
+    .spool-conv-item input[type="checkbox"] { margin-top:3px;accent-color:#3b82f6;width:18px;height:18px;cursor:pointer;flex-shrink:0 }
     .spool-conv-info { flex:1;min-width:0 }
-    .spool-conv-title { color:#e2e8f0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-    .spool-conv-meta { color:#64748b;font-size:11px;margin-top:2px }
-    .spool-preview-header { padding:12px;border-bottom:1px solid #1e293b;margin:-12px -12px 12px;background:#1e293b }
-    .spool-preview-header h3 { color:#f8fafc;font-size:15px;margin-bottom:4px }
-    .spool-preview-header .date { color:#64748b;font-size:12px }
-    .spool-preview-body { font-size:13px;color:#94a3b8;line-height:1.6;white-space:pre-wrap;word-break:break-word }
+    .spool-conv-title { color:#e2e8f0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+    .spool-conv-meta { color:#64748b;font-size:13px;margin-top:4px }
+    .spool-preview-header { padding:16px;border-bottom:1px solid #1e293b;margin:-16px -16px 16px;background:#1e293b }
+    .spool-preview-header h3 { color:#f8fafc;font-size:18px;margin-bottom:6px }
+    .spool-preview-header .date { color:#64748b;font-size:14px }
+    .spool-preview-body { font-size:14px;color:#94a3b8;line-height:1.6;white-space:pre-wrap;word-break:break-word }
     .spool-preview-body .msg { margin-bottom:16px }
     .spool-preview-body .role-user { color:#3b82f6;font-weight:600 }
     .spool-preview-body .role-assistant { color:#22c55e;font-weight:600 }
-    .spool-preview-files { margin-top:8px;padding:8px;border:1px solid #334155;border-radius:8px }
-    .spool-preview-files h4 { color:#94a3b8;font-size:12px;margin-bottom:6px }
-    .spool-preview-files span { display:inline-block;background:#1e293b;border-radius:4px;padding:2px 8px;font-size:11px;color:#94a3b8;margin:2px } </style>
+    .spool-preview-files { margin-top:12px;padding:12px;border:1px solid #334155;border-radius:8px }
+    .spool-preview-files h4 { color:#94a3b8;font-size:14px;margin-bottom:8px }
+    .spool-preview-files span { display:inline-block;background:#1e293b;border-radius:4px;padding:4px 10px;font-size:13px;color:#94a3b8;margin:2px } </style>
     <style>
-    .spool-footer { display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-top:1px solid #1e293b;flex-wrap:wrap;gap:8px }
-    .spool-stats { color:#94a3b8;font-size:13px }
-    .spool-actions { display:flex;gap:8px }
-    .spool-btn-primary { background:#3b82f6;color:#fff;padding:10px 20px;font-size:14px;font-weight:600 }
+    .spool-footer { display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-top:1px solid #1e293b;flex-wrap:wrap;gap:12px }
+    .spool-stats { color:#94a3b8;font-size:15px }
+    .spool-actions { display:flex;gap:12px }
+    .spool-btn-primary { background:#3b82f6;color:#fff;padding:12px 24px;font-size:16px;font-weight:600 }
     .spool-btn-primary:hover { background:#2563eb }
     .spool-btn-primary:disabled { background:#475569;cursor:not-allowed }
-    .spool-btn-secondary { background:#334155;color:#e2e8f0;padding:10px 20px;font-size:14px }
+    .spool-btn-secondary { background:#334155;color:#e2e8f0;padding:12px 24px;font-size:16px }
     .spool-btn-secondary:hover { background:#475569 }
-    .spool-progress-area { padding:12px 24px 16px }
-    .spool-progress-bar-bg { height:6px;background:#1e293b;border-radius:3px;overflow:hidden }
-    .spool-progress-bar { height:100%;background:#3b82f6;border-radius:3px;width:0;transition:width 0.3s }
-    .spool-progress-text { color:#94a3b8;font-size:12px;margin-top:6px } </style>`);
+    .spool-progress-area { padding:16px 24px 20px }
+    .spool-progress-bar-bg { height:8px;background:#1e293b;border-radius:4px;overflow:hidden }
+    .spool-progress-bar { height:100%;background:#3b82f6;border-radius:4px;width:0;transition:width 0.3s }
+    .spool-progress-text { color:#94a3b8;font-size:14px;margin-top:8px } </style>`);
 
   document.body.appendChild(overlay);
+
+  // Show loading state
+  showLoading("Fetching session token...");
 
   // ── Get token ───────────────────────────────────────────────────────
 
   let token;
   try {
-    const session = await fetch("/api/auth/session").then((r) => r.json());
+    const sessionResp = await fetch("/api/auth/session");
+    const session = await sessionResp.json();
+    console.log("[Spool] Session response:", session);
+    if (!sessionResp.ok) throw new Error(`HTTP ${sessionResp.status}: ${session.message || "Failed"}`);
     token = session.accessToken;
-    if (!token) throw new Error("No accessToken");
+    if (!token) throw new Error("No accessToken - are you logged in?");
   } catch (e) {
-    alert("Spool: Failed to get session token. Are you logged in?");
-    overlay.remove();
+    showError(`Failed to get session: ${e.message}`, true);
+    console.error("[Spool] Session error:", e);
     return;
   }
+
+  showLoading("Loading conversations...");
 
   // ── API helpers ──────────────────────────────────────────────────────
 
@@ -257,23 +312,28 @@
 
   let conversations = [];
   try {
-    let offset = 0; let cursor = null;
+    let offset = 0; let cursor = null; let page = 0;
     while (true) {
+      page++;
       const params = cursor ? `limit=${PAGE_SIZE}&cursor=${cursor}` : `offset=${offset}&limit=${PAGE_SIZE}`;
       const data = await apiGet(`conversations?${params}`);
+      console.log(`[Spool] Page ${page}: got ${(data.items || []).length} items, total=${data.total}, next_cursor=${data.next_cursor}, has_more=${data.has_more}`);
       const items = data.items || [];
       if (!items.length) break;
       conversations.push(...items);
       if (data.next_cursor) { cursor = data.next_cursor; offset = 0; }
-      else { offset += PAGE_SIZE; if (offset >= (data.total || 0)) break; }
-      console.log(`[Spool] Loaded ${conversations.length} conversations`);
+      else { offset += PAGE_SIZE; if (!data.has_more || offset >= (data.total || 0)) break; }
+      showLoading(`Loading conversations... ${conversations.length}${data.total ? ` / ${data.total}` : ""}`);
       await sleep(DELAY);
     }
+    console.log(`[Spool] Total loaded: ${conversations.length} conversations`);
   } catch (e) {
-    alert(`Spool: Failed to fetch conversations: ${e.message}`); overlay.remove(); return;
+    showError(`Failed to load conversations: ${e.message}`, true);
+    console.error("[Spool] Fetch conversations error:", e);
+    return;
   }
 
-  if (!conversations.length) { alert("No conversations found."); overlay.remove(); return; }
+  if (!conversations.length) { showError("No conversations found.", false); return; }
 
   // ── State ─────────────────────────────────────────────────────
 
