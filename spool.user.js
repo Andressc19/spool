@@ -140,62 +140,64 @@
       </div>
     </div>`;
 
-  document.head.insertAdjacentHTML("beforeend", `<style>
+  const SPOOL_STYLES = `<style>
     #spool-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
-    #spool-overlay * { box-sizing:border-box;margin:0;padding:0 }
-    .spool-modal { background:#0f172a;border-radius:16px;width:min(96vw,1000px);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,0.5) }
-    .spool-header { display:flex;align-items:center;gap:12px;padding:20px 24px;border-bottom:1px solid #1e293b }
-    .spool-logo { font-size:32px }
-    .spool-title-area h2 { color:#f8fafc;font-size:24px }
-    .spool-subtitle { color:#64748b;font-size:14px }
-    .spool-close { margin-left:auto;background:none;border:none;color:#94a3b8;font-size:28px;cursor:pointer }
-    .spool-close:hover { color:#fff }
-    .spool-toolbar { display:flex;gap:12px;padding:16px 24px;border-bottom:1px solid #1e293b;flex-wrap:wrap;align-items:center }
-    .spool-toolbar input { flex:1;min-width:160px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px 14px;font-size:14px }
-    .spool-toolbar input:focus { outline:none;border-color:#3b82f6 }
-    .spool-toolbar input::placeholder { color:#475569 }
-    .spool-toolbar select { background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:14px }
-    .spool-btn { border:none;border-radius:8px;cursor:pointer;font-size:14px;transition:background 0.2s }
-    .spool-btn-sm { padding:8px 14px;background:#334155;color:#e2e8f0 }
-    .spool-btn-sm:hover { background:#475569 }
-    .spool-body { display:flex;flex:1;overflow:hidden;min-height:400px }
-    .spool-list { flex:1;overflow-y:auto;padding:16px;border-right:1px solid #1e293b;min-width:0;min-height:350px }
-    .spool-preview { width:min(420px,45%);overflow-y:auto;padding:16px;background:#0f172a;min-height:350px }
-    .spool-preview-empty { color:#475569;font-size:14px;text-align:center;margin-top:48px }
-    .spool-loading { color:#94a3b8;font-size:16px;text-align:center;margin-top:48px }
-    .spool-error { color:#fecaca;font-size:16px;text-align:center;margin-top:48px }
-    .spool-error-icon { font-size:36px;margin-bottom:12px }
-    .spool-error-msg { color:#f87171;font-size:14px;max-width:300px;margin:0 auto }
-    .spool-conv-item { display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:8px;cursor:pointer;margin-bottom:6px }
-    .spool-conv-item:hover { background:#1e293b }
-    .spool-conv-item.selected { background:#1e3a5f }
-    .spool-conv-item input[type="checkbox"] { margin-top:3px;accent-color:#3b82f6;width:18px;height:18px;cursor:pointer;flex-shrink:0 }
-    .spool-conv-info { flex:1;min-width:0 }
-    .spool-conv-title { color:#e2e8f0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-    .spool-conv-meta { color:#64748b;font-size:13px;margin-top:4px }
-    .spool-preview-header { padding:16px;border-bottom:1px solid #1e293b;margin:-16px -16px 16px;background:#1e293b }
-    .spool-preview-header h3 { color:#f8fafc;font-size:18px;margin-bottom:6px }
-    .spool-preview-header .date { color:#64748b;font-size:14px }
-    .spool-preview-body { font-size:14px;color:#94a3b8;line-height:1.6;white-space:pre-wrap;word-break:break-word }
-    .spool-preview-body .msg { margin-bottom:16px }
-    .spool-preview-body .role-user { color:#3b82f6;font-weight:600 }
-    .spool-preview-body .role-assistant { color:#22c55e;font-weight:600 }
-    .spool-preview-files { margin-top:12px;padding:12px;border:1px solid #334155;border-radius:8px }
-    .spool-preview-files h4 { color:#94a3b8;font-size:14px;margin-bottom:8px }
-    .spool-preview-files span { display:inline-block;background:#1e293b;border-radius:4px;padding:4px 10px;font-size:13px;color:#94a3b8;margin:2px } </style>
-    <style>
-    .spool-footer { display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-top:1px solid #1e293b;flex-wrap:wrap;gap:12px }
-    .spool-stats { color:#94a3b8;font-size:15px }
-    .spool-actions { display:flex;gap:12px }
-    .spool-btn-primary { background:#3b82f6;color:#fff;padding:12px 24px;font-size:16px;font-weight:600 }
-    .spool-btn-primary:hover { background:#2563eb }
-    .spool-btn-primary:disabled { background:#475569;cursor:not-allowed }
-    .spool-btn-secondary { background:#334155;color:#e2e8f0;padding:12px 24px;font-size:16px }
-    .spool-btn-secondary:hover { background:#475569 }
-    .spool-progress-area { padding:16px 24px 20px }
-    .spool-progress-bar-bg { height:8px;background:#1e293b;border-radius:4px;overflow:hidden }
-    .spool-progress-bar { height:100%;background:#3b82f6;border-radius:4px;width:0;transition:width 0.3s }
-    .spool-progress-text { color:#94a3b8;font-size:14px;margin-top:8px } </style>`);
+    #spool-overlay * { box-sizing:border-box; }
+    #spool-overlay .spool-modal { background:#0f172a;border-radius:16px;width:min(96vw,1000px);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,0.5);padding:20px }
+    #spool-overlay .spool-header { display:flex;align-items:center;gap:12px;padding:12px 16px 20px 20px;border-bottom:1px solid #1e293b;margin:0 -20px 0 -20px }
+    #spool-overlay .spool-logo { font-size:32px }
+    #spool-overlay .spool-title-area h2 { color:#f8fafc;font-size:24px;margin:0 }
+    #spool-overlay .spool-subtitle { color:#64748b;font-size:14px;margin:4px 0 0 }
+    #spool-overlay .spool-close { margin-left:auto;background:none;border:none;color:#94a3b8;font-size:28px;cursor:pointer;padding:4px 8px }
+    #spool-overlay .spool-close:hover { color:#fff }
+    #spool-overlay .spool-toolbar { display:flex;gap:12px;padding:16px 0;border-bottom:1px solid #1e293b;flex-wrap:wrap;align-items:center;margin:0 -20px;padding-left:20px;padding-right:20px }
+    #spool-overlay .spool-toolbar input { flex:1;min-width:160px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:12px 16px;font-size:14px }
+    #spool-overlay .spool-toolbar input:focus { outline:none;border-color:#3b82f6 }
+    #spool-overlay .spool-toolbar input::placeholder { color:#475569 }
+    #spool-overlay .spool-toolbar select { background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:12px 16px;font-size:14px }
+    #spool-overlay .spool-btn { border:none;border-radius:8px;cursor:pointer;font-size:14px;transition:background 0.2s }
+    #spool-overlay .spool-btn-sm { padding:10px 16px;background:#334155;color:#e2e8f0 }
+    #spool-overlay .spool-btn-sm:hover { background:#475569 }
+    #spool-overlay .spool-body { display:flex;flex:1;overflow:hidden;min-height:400px;margin:0 -20px }
+    #spool-overlay .spool-list { flex:1;overflow-y:auto;padding:16px 20px;border-right:1px solid #1e293b;min-width:0;min-height:350px }
+    #spool-overlay .spool-preview { width:min(420px,45%);overflow-y:auto;padding:16px 20px;background:#0f172a;min-height:350px }
+    #spool-overlay .spool-preview-empty { color:#475569;font-size:14px;text-align:center;margin-top:48px }
+    #spool-overlay .spool-loading { color:#94a3b8;font-size:16px;text-align:center;margin-top:48px }
+    #spool-overlay .spool-error { color:#fecaca;font-size:16px;text-align:center;margin-top:48px }
+    #spool-overlay .spool-error-icon { font-size:36px;margin-bottom:12px }
+    #spool-overlay .spool-error-msg { color:#f87171;font-size:14px;max-width:300px;margin:0 auto }
+    #spool-overlay .spool-conv-item { display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:8px;cursor:pointer;margin-bottom:8px }
+    #spool-overlay .spool-conv-item:hover { background:#1e293b }
+    #spool-overlay .spool-conv-item.selected { background:#1e3a5f }
+    #spool-overlay .spool-conv-item input[type="checkbox"] { margin-top:3px;accent-color:#3b82f6;width:18px;height:18px;cursor:pointer;flex-shrink:0 }
+    #spool-overlay .spool-conv-info { flex:1;min-width:0 }
+    #spool-overlay .spool-conv-title { color:#e2e8f0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+    #spool-overlay .spool-conv-meta { color:#64748b;font-size:13px;margin-top:4px }
+    #spool-overlay .spool-preview-header { padding:20px;border-bottom:1px solid #1e293b;margin:0 -20px 16px -20px;background:#1e293b }
+    #spool-overlay .spool-preview-header h3 { color:#f8fafc;font-size:18px;margin:0 0 6px }
+    #spool-overlay .spool-preview-header .date { color:#64748b;font-size:14px }
+    #spool-overlay .spool-preview-body { font-size:14px;color:#94a3b8;line-height:1.6;white-space:pre-wrap;word-break:break-word;padding:0 20px }
+    #spool-overlay .spool-preview-body .msg { margin-bottom:16px }
+    #spool-overlay .spool-preview-body .role-user { color:#3b82f6;font-weight:600 }
+    #spool-overlay .spool-preview-body .role-assistant { color:#22c55e;font-weight:600 }
+    #spool-overlay .spool-preview-files { margin-top:12px;padding:12px;border:1px solid #334155;border-radius:8px;margin:0 20px }
+    #spool-overlay .spool-preview-files h4 { color:#94a3b8;font-size:14px;margin-bottom:8px }
+    #spool-overlay .spool-preview-files span { display:inline-block;background:#1e293b;border-radius:4px;padding:4px 10px;font-size:13px;color:#94a3b8;margin:2px }
+    #spool-overlay .spool-footer { display:flex;align-items:center;justify-content:space-between;padding:20px 0 0;border-top:1px solid #1e293b;flex-wrap:wrap;gap:12px;margin:0 -20px;padding-left:20px;padding-right:20px }
+    #spool-overlay .spool-stats { color:#94a3b8;font-size:15px;padding:12px 0 }
+    #spool-overlay .spool-actions { display:flex;gap:12px;padding:8px 0 }
+    #spool-overlay .spool-btn-primary { background:#3b82f6;color:#fff;padding:14px 28px;font-size:16px;font-weight:600 }
+    #spool-overlay .spool-btn-primary:hover { background:#2563eb }
+    #spool-overlay .spool-btn-primary:disabled { background:#475569;cursor:not-allowed }
+    #spool-overlay .spool-btn-secondary { background:#334155;color:#e2e8f0;padding:14px 28px;font-size:16px }
+    #spool-overlay .spool-btn-secondary:hover { background:#475569 }
+    #spool-overlay .spool-progress-area { padding:20px 0 }
+    #spool-overlay .spool-progress-bar-bg { height:8px;background:#1e293b;border-radius:4px;overflow:hidden }
+    #spool-overlay .spool-progress-bar { height:100%;background:#3b82f6;border-radius:4px;width:0;transition:width 0.3s }
+    #spool-overlay .spool-progress-text { color:#94a3b8;font-size:14px;margin-top:8px }
+    `;
+
+  document.head.insertAdjacentHTML("beforeend", SPOOL_STYLES);
 
   document.body.appendChild(overlay);
 
@@ -348,11 +350,18 @@
 
   // ── Date helpers ─────────────────────────────────────────────────────
 
-  function formatDate(ts) {
-    if (!ts) return "";
+  function formatDate(tsOrId) {
+    if (!tsOrId) return "";
     try {
-      const ms = typeof ts === "number" ? ts * 1000 : parseInt(ts) * 1000;
-      if (isNaN(ms)) return "Unknown date";
+      // Could be timestamp (seconds or ms) or conversation ID
+      let ts = tsOrId;
+      if (typeof tsOrId === "string") {
+        // Try parse, might be conversation ID - use first 8 chars as hex
+        ts = parseInt(tsOrId.slice(0, 8), 16);
+        if (isNaN(ts) || ts < 1000000000) return tsOrId.slice(0, 8); // fallback to showing ID prefix
+      }
+      // If value is very small, it's seconds. If large, it's milliseconds
+      const ms = ts > 10000000000 ? ts : ts * 1000;
       return new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
     } catch { return "Unknown date"; }
   }
@@ -362,7 +371,13 @@
     const now = Date.now() / 1000;
     const map = { week: 7, month: 30, year: 365 };
     const cutoff = now - (map[preset] * 86400);
-    return (conv.update_time || 0) >= cutoff;
+    // Try different fields - might be string or number, seconds or milliseconds
+    let ts = 0;
+    if (conv.update_time) ts = typeof conv.update_time === "number" ? conv.update_time : parseInt(conv.update_time);
+    else if (conv.create_time) ts = typeof conv.create_time === "number" ? conv.create_time : parseInt(conv.create_time);
+    else if (conv.last_id) ts = parseInt(conv.last_id.slice(0, 8), 16); // fallback from ID
+    // console.log(`[Spool] dateFilter "${conv.title?.slice(0,20)}" ts=${ts} cutoff=${cutoff} result=${ts >= cutoff}`);
+    return ts >= cutoff;
   }
 
   function filterConversations() {
