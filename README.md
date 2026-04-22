@@ -1,28 +1,28 @@
 # Spool - ChatGPT Exporter
 
-Userscript para exportar conversaciones de ChatGPT.
+Userscript to export ChatGPT conversations.
 
-## Instalación
+## Installation
 
-1. Instalar [TamperMonkey](https://tampermonkey.net)
-2. Crear nuevo script → pegar contenido de `spool.user.js`
+1. Install [TamperMonkey](https://tampermonkey.net)
+2. Create new script → paste content from `spool.user.js`
 
-## Uso
+## Usage
 
-1. Ir a chatgpt.com
-2. Click botón 📦 (abajo derecha)
-3. Seleccionar conversaciones
-4. Exportar
+1. Go to chatgpt.com
+2. Click 📦 button (bottom right)
+3. Select conversations
+4. Export
 
 ## Features
 
-- Selección individual de conversaciones
-- Preview antes de exportar
-- Filtro por fecha (semana/mes/año)
-- Búsqueda por título
-- Exporta JSON + Markdown + ZIP
+- Individual conversation selection
+- Preview before exporting
+- Date filter (week/month/year)
+- Search by title
+- Export as JSON + Markdown + ZIP
 
-## Formato de salida
+## Output format
 
 ```
 chatgpt-export.zip
