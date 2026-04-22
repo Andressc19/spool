@@ -1,0 +1,15 @@
+// ==UserScript==
+// @name         Spool - ChatGPT Exporter
+// @namespace    http://spool.local
+// @version      1.0.0
+// @description  Export your ChatGPT conversations as JSON, Markdown, HTML and ZIP. Supports selective download with preview.
+// @author      Spool contributors
+// @license     MIT - see https://github.com/Andressc19/spool
+// @homepage    https://github.com/Andressc19/spool
+// @updateURL   https://raw.githubusercontent.com/Andressc19/spool/main/spool.user.js
+// @downloadURL https://raw.githubusercontent.com/Andressc19/spool/main/spool.user.js
+// @match       https://chatgpt.com/*
+// @match       https://chatgpt.com/*/*
+// @grant       none
+// @run-at      document-idle
+// ==/UserScript==

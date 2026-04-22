@@ -34,3 +34,37 @@ chatgpt-export.zip
 ## License
 
 MIT
+
+## Development
+
+### Project Structure
+
+```
+spool/
+├── src/
+│   ├── config.js      # Constants
+│   ├── state.js      # State management
+│   ├── api.js        # API fetch
+│   ├── parser.js     # Parsers
+│   ├── export.js     # ZIP export
+│   ├── ui.js        # UI + styles
+│   └── main.js      # Entry point
+├── scripts/
+│   ├── build.js     # Build script
+│   └── metadata.txt # UserScript metadata
+└── spool.user.js   # Generated (do not edit)
+```
+
+### Build
+
+```bash
+cd scripts
+node build.js
+```
+
+### Contributing
+
+1. Edit files in `src/`
+2. Run `node scripts/build.js`
+3. Test in TamperMonkey
+4. Commit and push
