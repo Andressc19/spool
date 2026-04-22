@@ -7,7 +7,9 @@ Userscript to export ChatGPT conversations.
 1. Install [TamperMonkey](https://tampermonkey.net) browser extension
 
 2. Create new script 
+
 ![new-script](docs/img/new-script.png)
+
 paste content from `spool.user.js`
 ## Usage
 
