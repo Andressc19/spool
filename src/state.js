@@ -14,6 +14,18 @@ function saveSelections(ids) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
 }
 
+function loadExpanded() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(STORAGE_EXPANDED_KEY) || "[]"));
+  } catch {
+    return new Set(["personal"]); // Personal expanded by default
+  }
+}
+
+function saveExpanded(ids) {
+  localStorage.setItem(STORAGE_EXPANDED_KEY, JSON.stringify([...ids]));
+}
+
 function showLoading(msg = "Loading...") {
   document.getElementById("spool-list").innerHTML = `<div class="spool-loading">${msg}</div>`;
   document.getElementById("spool-preview").innerHTML = '<div class="spool-preview-empty">Select a conversation to preview</div>';

@@ -37,82 +37,52 @@
   document.body.appendChild(fab);
 })();
 
-(async () => {
-  if (document.getElementById("spool-overlay")) return;
+  (async () => {
+    if (document.getElementById("spool-overlay")) return;
 
-  const overlay = createOverlay();
-  document.head.insertAdjacentHTML("beforeend", SPOOL_STYLES);
-  document.body.appendChild(overlay);
+    const overlay = createOverlay();
+    document.head.insertAdjacentHTML("beforeend", SPOOL_STYLES);
+    document.body.appendChild(overlay);
 
-  showLoading("Fetching session token...");
+    showLoading("Initializing...");
 
-  // Get token
-  let token;
-  try {
-    const sessionResp = await fetch("/api/auth/session");
-    const session = await sessionResp.json();
-    console.log("[Spool] Session:", session);
-    if (!sessionResp.ok) throw new Error(`HTTP ${sessionResp.status}`);
-    token = session.accessToken;
-    if (!token) throw new Error("No accessToken");
-  } catch (e) {
-    showError(`Failed to get session: ${e.message}`, true);
-    return;
-  }
-
-  showLoading("Loading projects and conversations...");
-
-  // Fetch projects and personal conversations in parallel
-  let projects = [];
-  let personalConversations = [];
-  
-  try {
-    const [projectsData, personalData] = await Promise.all([
-      fetchProjects(token),
-      fetchConversations(token),
-    ]);
-    projects = projectsData;
-    personalConversations = personalData;
-  } catch (e) {
-    showError(`Failed to load: ${e.message}`, true);
-    return;
-  }
-
-  // Fetch all conversations for each project
-  showLoading(`Loading project conversations... 0/${projects.length}`);
-  
-  for (let i = 0; i < projects.length; i++) {
-    const project = projects[i];
-    console.log(`[Spool] Fetching conversations for project: ${project.name}`);
-    
+    // Get token (necesario para todo)
+    let token;
     try {
-      const convos = await fetchAllProjectConversations(project.id, token);
-      project.conversations = convos;
-      console.log(`[Spool] Project ${project.name}: ${convos.length} conversations`);
+      const sessionResp = await fetch("/api/auth/session");
+      const session = await sessionResp.json();
+      console.log("[Spool] Session:", session);
+      if (!sessionResp.ok) throw new Error(`HTTP ${sessionResp.status}`);
+      token = session.accessToken;
+      if (!token) throw new Error("No accessToken");
     } catch (e) {
-      console.error(`[Spool] Error fetching conversations for ${project.name}:`, e);
-      project.conversations = [];
+      showError(`Failed to get session: ${e.message}`, true);
+      return;
     }
-    
-    showLoading(`Loading project conversations... ${i + 1}/${projects.length}`);
-    await sleep(DELAY);
-  }
 
-  // Calculate totals
-  const totalProjectConvs = projects.reduce((sum, p) => sum + p.conversations.length, 0);
-  const totalPersonal = personalConversations.length;
-  
-  console.log(`[Spool] Loaded ${projects.length} projects (${totalProjectConvs} conversations) + ${totalPersonal} personal conversations`);
-
-  // State
+  // State inicial (vacío)
   const state = {
-    projects: projects,
-    personal: personalConversations,
+    projects: [],
+    personal: [],
     selected: loadSelections(),
     activeId: null,
-    filter: "all", // 'all', 'personal', or project ID
+    filter: "all",
     searchQuery: "",
+    loading: true,
+    loadingProjects: 0,
+    totalProjects: 0,
+    expanded: loadExpanded(),
   };
+
+  // Mostrar UI inmediatamente
+  renderList();
+  updateStats();
+
+  // Cargar datos en segundo plano (no bloqueante)
+  loadAllData(state).catch(e => {
+    console.error('[Spool] Error loading data:', e);
+    showError(`Failed to load data: ${e.message}`, false);
+  });
 
   // Filter function
   function getFilteredData() {
@@ -147,6 +117,22 @@
   // Render list
   function renderList() {
     const list = document.getElementById("spool-list");
+    
+    // Mostrar estado de carga
+    if (state.loading) {
+      const progressText = state.totalProjects > 0 
+        ? `Loading projects... ${state.loadingProjects}/${state.totalProjects}`
+        : 'Loading conversations...';
+      
+      list.innerHTML = `
+        <div class="spool-loading-container">
+          <div class="spool-spinner"></div>
+          <div class="spool-loading-text">${progressText}</div>
+        </div>
+      `;
+      return;
+    }
+    
     const filtered = getFilteredData();
     
     let html = "";
@@ -156,9 +142,10 @@
       html += `<div class="spool-section-header">📁 Projects</div>`;
       
       for (const project of filtered.projects) {
-        const isOpen = state.selected.has(`project:${project.id}`);
+        const isOpen = state.expanded.has(project.id);
         const emoji = project.emoji || "📁";
         const theme = project.theme || "#3b82f6";
+        const allSelected = project.conversations.length > 0 && project.conversations.every(c => state.selected.has(c.id));
         
         html += `
           <div class="spool-project" data-project="${project.id}">
@@ -167,7 +154,7 @@
               <span class="spool-project-emoji">${emoji}</span>
               <span class="spool-project-name">${escapeHtml(project.name)}</span>
               <span class="spool-project-count">${project.conversations.length}</span>
-              <input type="checkbox" class="spool-project-checkbox"${isOpen ? " checked" : ""} data-project="${project.id}">
+              <input type="checkbox" class="spool-project-checkbox"${allSelected ? " checked" : ""} data-project="${project.id}">
             </div>
             ${isOpen ? `
               <div class="spool-project-conversations">
@@ -193,28 +180,39 @@
     
     // Personal conversations section
     if (filtered.personal.length > 0 && state.filter !== "projects") {
-      const sectionTitle = state.filter === "all" ? "📄 Personal Conversations" : "";
-      if (sectionTitle) {
-        html += `<div class="spool-section-header">${sectionTitle}</div>`;
-      }
+      const isPersonalOpen = state.expanded.has("personal");
+      const allSelected = filtered.personal.length > 0 && filtered.personal.every(c => state.selected.has(c.id));
       
-      html += filtered.personal
-        .map((c) => {
-          const sel = state.selected.has(c.id);
-          const files = c.has_files || c.attachment_count || 0;
-          const date = formatDate(c.update_time || c.create_time);
-          const msgs = c.num_total_messages || c.message_count || "?";
-          return `
-            <div class="spool-conv-item${sel ? " selected" : ""}" data-id="${c.id}">
-              <input type="checkbox"${sel ? " checked" : ""} data-cb="${c.id}">
-              <div class="spool-conv-info">
-                <div class="spool-conv-title">${escapeHtml(c.title || "Untitled")}</div>
-                <div class="spool-conv-meta">${date} · ${msgs} msgs${files ? ` · ${files} files` : ""}</div>
-              </div>
+      html += `
+        <div class="spool-project" data-project="personal">
+          <div class="spool-project-header" style="border-left-color: #22c55e">
+            <button class="spool-project-toggle">${isPersonalOpen ? "▼" : "▶"}</button>
+            <span class="spool-project-emoji">📄</span>
+            <span class="spool-project-name">Personal Conversations</span>
+            <span class="spool-project-count">${filtered.personal.length}</span>
+            <input type="checkbox" class="spool-project-checkbox"${allSelected ? " checked" : ""} data-project="personal">
+          </div>
+          ${isPersonalOpen ? `
+            <div class="spool-project-conversations">
+              ${filtered.personal.map((c) => {
+                const sel = state.selected.has(c.id);
+                const files = c.has_files || c.attachment_count || 0;
+                const date = formatDate(c.update_time || c.create_time);
+                const msgs = c.num_total_messages || c.message_count || "?";
+                return `
+                  <div class="spool-conv-item${sel ? " selected" : ""}" data-id="${c.id}">
+                    <input type="checkbox"${sel ? " checked" : ""} data-cb="${c.id}">
+                    <div class="spool-conv-info">
+                      <div class="spool-conv-title">${escapeHtml(c.title || "Untitled")}</div>
+                      <div class="spool-conv-meta">${date} · ${msgs} msgs${files ? ` · ${files} files` : ""}</div>
+                    </div>
+                  </div>
+                `;
+              }).join("")}
             </div>
-          `;
-        })
-        .join("");
+          ` : ""}
+        </div>
+      `;
     }
     
     if (filtered.projects.length === 0 && filtered.personal.length === 0) {
@@ -229,16 +227,31 @@
         e.stopPropagation();
         
         if (cb.classList.contains("spool-project-checkbox")) {
-          // Toggle entire project
+          // Toggle entire project or personal selection
           const projectId = cb.dataset.project;
-          const project = state.projects.find(p => p.id === projectId);
           
-          if (cb.checked) {
-            state.selected.add(`project:${projectId}`);
-            project.conversations.forEach(c => state.selected.add(c.id));
+          // Expand the section if not already expanded
+          if (!state.expanded.has(projectId)) {
+            state.expanded.add(projectId);
+            saveExpanded(state.expanded);
+          }
+          
+          if (projectId === "personal") {
+            // Toggle all personal conversations selection
+            if (cb.checked) {
+              filtered.personal.forEach(c => state.selected.add(c.id));
+            } else {
+              filtered.personal.forEach(c => state.selected.delete(c.id));
+            }
           } else {
-            state.selected.delete(`project:${projectId}`);
-            project.conversations.forEach(c => state.selected.delete(c.id));
+            // Toggle project selection
+            const project = state.projects.find(p => p.id === projectId);
+            
+            if (cb.checked) {
+              project.conversations.forEach(c => state.selected.add(c.id));
+            } else {
+              project.conversations.forEach(c => state.selected.delete(c.id));
+            }
           }
           
           saveSelections(state.selected);
@@ -253,24 +266,27 @@
           } else {
             state.selected.delete(id);
             cb.closest(".spool-conv-item")?.classList.remove("selected");
+          }
+          
+          // Update project/personal checkbox if needed
+          const convProject = cb.closest(".spool-project");
+          if (convProject) {
+            const projectId = convProject.dataset.project;
             
-            // Update project checkbox if needed
-            const convProject = cb.closest(".spool-project");
-            if (convProject) {
-              const projectId = convProject.dataset.project;
+            if (projectId === "personal") {
+              // Check if all personal are selected
+              const allSelected = filtered.personal.every(c => state.selected.has(c.id));
+              const personalCb = convProject.querySelector(".spool-project-checkbox");
+              if (personalCb) personalCb.checked = allSelected;
+            } else {
+              // Check if all project conversations are selected
               const project = state.projects.find(p => p.id === projectId);
               const allSelected = project.conversations.every(c => state.selected.has(c.id));
               const projectCb = convProject.querySelector(".spool-project-checkbox");
-              if (projectCb) {
-                projectCb.checked = allSelected;
-                if (allSelected) {
-                  state.selected.add(`project:${projectId}`);
-                } else {
-                  state.selected.delete(`project:${projectId}`);
-                }
-              }
+              if (projectCb) projectCb.checked = allSelected;
             }
           }
+          
           saveSelections(state.selected);
           updateStats();
         }
@@ -284,13 +300,14 @@
         const projectEl = btn.closest(".spool-project");
         const projectId = projectEl.dataset.project;
         
-        if (state.selected.has(`project:${projectId}`)) {
-          state.selected.delete(`project:${projectId}`);
+        // Toggle expanded state
+        if (state.expanded.has(projectId)) {
+          state.expanded.delete(projectId);
         } else {
-          state.selected.add(`project:${projectId}`);
+          state.expanded.add(projectId);
         }
         
-        saveSelections(state.selected);
+        saveExpanded(state.expanded);
         renderList();
         updateStats();
       });
@@ -436,11 +453,6 @@
     renderList();
   });
   
-  document.getElementById("spool-date-filter").addEventListener("change", (e) => {
-    // Could implement date filtering per project if needed
-    renderList();
-  });
-  
   document.getElementById("spool-select-all").onclick = () => {
     const filtered = getFilteredData();
     filtered.projects.forEach(p => {
@@ -568,4 +580,72 @@
 
   renderList();
   updateStats();
+
+  // Cargar datos en segundo plano (no bloqueante)
+  loadAllData().catch(e => {
+    console.error('[Spool] Error loading data:', e);
+    showError(`Failed to load data: ${e.message}`, false);
+  });
+
+  // ═════════════════════════════════════════════════════════════
+  // Carga de datos en segundo plano
+  // ═════════════════════════════════════════════════════════════
+
+  async function loadAllData() {
+    try {
+      state.loading = true;
+      state.loadingProjects = 0;
+      renderList();
+      
+      // Cargar personales y proyectos en paralelo
+      const [personalData, projectsData] = await Promise.all([
+        fetchConversations(token),
+        fetchProjects(token),
+      ]);
+      
+      state.personal = personalData;
+      state.projects = projectsData;
+      state.totalProjects = projectsData.length;
+      
+      console.log(`[Spool] Loaded ${projectsData.length} projects, ${personalData.length} personal conversations`);
+      
+      // Cargar conversaciones de cada proyecto
+      for (let i = 0; i < state.projects.length; i++) {
+        const project = state.projects[i];
+        console.log(`[Spool] Fetching conversations for project: ${project.name}`);
+        
+        try {
+          const convos = await fetchAllProjectConversations(project.id, token);
+          project.conversations = convos;
+          console.log(`[Spool] Project ${project.name}: ${convos.length} conversations`);
+        } catch (e) {
+          console.error(`[Spool] Error fetching conversations for ${project.name}:`, e);
+          project.conversations = [];
+        }
+        
+        state.loadingProjects = i + 1;
+        renderList();
+        updateStats();
+        
+        await sleep(DELAY);
+      }
+      
+      state.loading = false;
+      renderList();
+      updateStats();
+      
+      const totalProjectConvs = state.projects.reduce((sum, p) => sum + p.conversations.length, 0);
+      console.log(`[Spool] Done! ${state.projects.length} projects (${totalProjectConvs} conversations) + ${state.personal.length} personal`);
+      
+    } catch (e) {
+      state.loading = false;
+      throw e;
+    }
+  }
+
+  // Cargar datos en segundo plano (no bloqueante)
+  loadAllData().catch(e => {
+    console.error('[Spool] Error loading data:', e);
+    showError(`Failed to load data: ${e.message}`, false);
+  });
 })();

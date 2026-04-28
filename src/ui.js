@@ -25,6 +25,10 @@ const SPOOL_STYLES = `<style>
   #spool-overlay .spool-preview { width:min(420px,45%);overflow-y:auto;padding:16px 20px;background:#0f172a;min-height:350px }
   #spool-overlay .spool-preview-empty { color:#475569;font-size:14px;text-align:center;margin-top:48px }
   #spool-overlay .spool-loading { color:#94a3b8;font-size:16px;text-align:center;margin-top:48px }
+  #spool-overlay .spool-loading-container { display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px }
+  #spool-overlay .spool-spinner { width:40px;height:40px;border:4px solid #1e293b;border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #spool-overlay .spool-loading-text { color:#64748b;font-size:14px }
   #spool-overlay .spool-error { color:#fecaca;font-size:16px;text-align:center;margin-top:48px }
   #spool-overlay .spool-error-icon { font-size:36px;margin-bottom:12px }
   #spool-overlay .spool-error-msg { color:#f87171;font-size:14px;max-width:300px;margin:0 auto }
@@ -94,12 +98,6 @@ const OVERLAY_HTML = `
 
     <div class="spool-toolbar">
       <input type="text" id="spool-search" placeholder="Search conversations...">
-      <select id="spool-date-filter">
-        <option value="all">All time</option>
-        <option value="week">Last week</option>
-        <option value="month">Last month</option>
-        <option value="year">Last year</option>
-      </select>
       <button id="spool-select-all" class="spool-btn spool-btn-sm">Select all</button>
       <button id="spool-select-none" class="spool-btn spool-btn-sm">None</button>
     </div>

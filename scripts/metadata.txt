@@ -8,6 +8,8 @@
 // @homepage    https://github.com/Andressc19/spool
 // @updateURL   https://raw.githubusercontent.com/Andressc19/spool/main/spool.user.js
 // @downloadURL https://raw.githubusercontent.com/Andressc19/spool/main/spool.user.js
+// @connect chatgpt.com
+// @grant GM_xmlhttpRequest
 // @match       https://chatgpt.com/*
 // @match       https://chatgpt.com/*/*
 // @grant       none
