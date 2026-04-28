@@ -28,6 +28,105 @@ async function apiFetchBinary(url) {
   };
 }
 
+async function fetchProjects(token) {
+  let projects = [];
+  let cursor = null;
+  
+  while (true) {
+    const params = cursor 
+      ? `cursor=${cursor}&owned_only=true&conversations_per_gizmo=20&limit=50`
+      : `owned_only=true&conversations_per_gizmo=20&limit=50`;
+    
+    const data = await apiGet(`gizmos/snorlax/sidebar?${params}`, token);
+    const items = data.items || [];
+    
+    console.log(`[Spool] Projects page: got ${items.length} projects`);
+    
+    for (const item of items) {
+      const gizmo = item.gizmo?.gizmo;
+      if (gizmo) {
+        projects.push({
+          id: gizmo.id,
+          name: gizmo.display?.name || "Untitled",
+          emoji: gizmo.display?.emoji,
+          theme: gizmo.display?.theme,
+          conversations: item.conversations?.items || [],
+          conversationsCursor: item.conversations?.cursor,
+        });
+      }
+    }
+    
+    if (!data.cursor || items.length === 0) break;
+    cursor = data.cursor;
+    await sleep(DELAY);
+  }
+  
+  return projects;
+}
+
+async function fetchAllProjectConversations(projectId, token) {
+  // Feature detection: probar diferentes endpoints en orden de preferencia
+  
+  // Estrategia 1: Endpoint directo /gizmos/{id}/conversations (límite 50)
+  try {
+    console.log(`[Spool] Trying endpoint: /gizmos/${projectId}/conversations`);
+    const conversations = await fetchProjectConversationsDirect(projectId, token);
+    console.log(`[Spool] Direct endpoint worked: ${conversations.length} conversations`);
+    return conversations;
+  } catch (e) {
+    console.warn(`[Spool] Direct endpoint failed: ${e.message}`);
+  }
+  
+  // Estrategia 2: Fallback - obtener desde sidebar (límite 20)
+  try {
+    console.log(`[Spool] Trying fallback: sidebar conversations`);
+    const conversations = await fetchProjectConversationsFromSidebar(projectId, token);
+    console.log(`[Spool] Fallback worked: ${conversations.length} conversations`);
+    return conversations;
+  } catch (e) {
+    console.warn(`[Spool] Fallback failed: ${e.message}`);
+  }
+  
+  // Si todo falla, retornar vacío
+  console.error(`[Spool] All endpoints failed for project ${projectId}`);
+  return [];
+}
+
+async function fetchProjectConversationsDirect(projectId, token) {
+  let conversations = [];
+  let cursor = null;
+  
+  while (true) {
+    const params = cursor 
+      ? `cursor=${cursor}&limit=50`
+      : `limit=50`;
+    
+    const data = await apiGet(`gizmos/${projectId}/conversations?${params}`, token);
+    
+    // Si hay error, lanzar excepción
+    if (data.error || data.status >= 400) {
+      throw new Error(`HTTP ${data.status || 'unknown'}`);
+    }
+    
+    const items = data.items || [];
+    conversations.push(...items);
+    
+    if (!data.cursor || items.length === 0) break;
+    cursor = data.cursor;
+    await sleep(DELAY);
+  }
+  
+  return conversations;
+}
+
+async function fetchProjectConversationsFromSidebar(projectId, token) {
+  // Obtener desde el sidebar (solo trae 20 conversaciones máx)
+  const data = await apiGet('gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=20&limit=50', token);
+  
+  const project = data.items?.find(item => item.gizmo?.gizmo?.id === projectId);
+  return project?.conversations?.items || [];
+}
+
 async function fetchConversations(token) {
   let conversations = [];
   let offset = 0;
@@ -45,32 +144,6 @@ async function fetchConversations(token) {
     const hasMore = data.has_more !== undefined ? data.has_more : items.length >= PAGE_SIZE;
 
     console.log(`[Spool] Page ${page}: got ${items.length}, total=${total}, has_more=${hasMore}`);
-
-    // DEBUG: Check for projects or folders
-      const sample = items[0];
-      // Look for g_p or any project-related field in ID
-      const hasProjectId = items.some(i => i.id?.includes('g-p-'));
-      console.log("[Spool] DEBUG - Any conversation with g-p- in ID?:", hasProjectId);
-      console.log("[Spool] DEBUG - Sample ID:", sample.id);
-      
-      // Try to find project-related API endpoints
-      const endpoints = [
-        'projects',
-        'workspaces', 
-        'user_projects',
-        'gpts',
-        'assistants'
-      ];
-      
-      for (const ep of endpoints) {
-        try {
-          console.log(`[Spool] DEBUG - Trying /${ep}...`);
-          const resp = await apiGet(ep, token);
-          console.log(`[Spool] DEBUG - /${ep} response:`, resp);
-        } catch(e) {
-          console.log(`[Spool] DEBUG - /${ep} error:`, e.message);
-        }
-      }
 
     if (!items.length) break;
     conversations.push(...items);

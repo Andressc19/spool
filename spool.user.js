@@ -90,6 +90,105 @@ async function apiFetchBinary(url) {
   };
 }
 
+async function fetchProjects(token) {
+  let projects = [];
+  let cursor = null;
+  
+  while (true) {
+    const params = cursor 
+      ? `cursor=${cursor}&owned_only=true&conversations_per_gizmo=20&limit=50`
+      : `owned_only=true&conversations_per_gizmo=20&limit=50`;
+    
+    const data = await apiGet(`gizmos/snorlax/sidebar?${params}`, token);
+    const items = data.items || [];
+    
+    console.log(`[Spool] Projects page: got ${items.length} projects`);
+    
+    for (const item of items) {
+      const gizmo = item.gizmo?.gizmo;
+      if (gizmo) {
+        projects.push({
+          id: gizmo.id,
+          name: gizmo.display?.name || "Untitled",
+          emoji: gizmo.display?.emoji,
+          theme: gizmo.display?.theme,
+          conversations: item.conversations?.items || [],
+          conversationsCursor: item.conversations?.cursor,
+        });
+      }
+    }
+    
+    if (!data.cursor || items.length === 0) break;
+    cursor = data.cursor;
+    await sleep(DELAY);
+  }
+  
+  return projects;
+}
+
+async function fetchAllProjectConversations(projectId, token) {
+  // Feature detection: probar diferentes endpoints en orden de preferencia
+  
+  // Estrategia 1: Endpoint directo /gizmos/{id}/conversations (límite 50)
+  try {
+    console.log(`[Spool] Trying endpoint: /gizmos/${projectId}/conversations`);
+    const conversations = await fetchProjectConversationsDirect(projectId, token);
+    console.log(`[Spool] Direct endpoint worked: ${conversations.length} conversations`);
+    return conversations;
+  } catch (e) {
+    console.warn(`[Spool] Direct endpoint failed: ${e.message}`);
+  }
+  
+  // Estrategia 2: Fallback - obtener desde sidebar (límite 20)
+  try {
+    console.log(`[Spool] Trying fallback: sidebar conversations`);
+    const conversations = await fetchProjectConversationsFromSidebar(projectId, token);
+    console.log(`[Spool] Fallback worked: ${conversations.length} conversations`);
+    return conversations;
+  } catch (e) {
+    console.warn(`[Spool] Fallback failed: ${e.message}`);
+  }
+  
+  // Si todo falla, retornar vacío
+  console.error(`[Spool] All endpoints failed for project ${projectId}`);
+  return [];
+}
+
+async function fetchProjectConversationsDirect(projectId, token) {
+  let conversations = [];
+  let cursor = null;
+  
+  while (true) {
+    const params = cursor 
+      ? `cursor=${cursor}&limit=50`
+      : `limit=50`;
+    
+    const data = await apiGet(`gizmos/${projectId}/conversations?${params}`, token);
+    
+    // Si hay error, lanzar excepción
+    if (data.error || data.status >= 400) {
+      throw new Error(`HTTP ${data.status || 'unknown'}`);
+    }
+    
+    const items = data.items || [];
+    conversations.push(...items);
+    
+    if (!data.cursor || items.length === 0) break;
+    cursor = data.cursor;
+    await sleep(DELAY);
+  }
+  
+  return conversations;
+}
+
+async function fetchProjectConversationsFromSidebar(projectId, token) {
+  // Obtener desde el sidebar (solo trae 20 conversaciones máx)
+  const data = await apiGet('gizmos/snorlax/sidebar?owned_only=true&conversations_per_gizmo=20&limit=50', token);
+  
+  const project = data.items?.find(item => item.gizmo?.gizmo?.id === projectId);
+  return project?.conversations?.items || [];
+}
+
 async function fetchConversations(token) {
   let conversations = [];
   let offset = 0;
@@ -107,32 +206,6 @@ async function fetchConversations(token) {
     const hasMore = data.has_more !== undefined ? data.has_more : items.length >= PAGE_SIZE;
 
     console.log(`[Spool] Page ${page}: got ${items.length}, total=${total}, has_more=${hasMore}`);
-
-    // DEBUG: Check for projects or folders
-      const sample = items[0];
-      // Look for g_p or any project-related field in ID
-      const hasProjectId = items.some(i => i.id?.includes('g-p-'));
-      console.log("[Spool] DEBUG - Any conversation with g-p- in ID?:", hasProjectId);
-      console.log("[Spool] DEBUG - Sample ID:", sample.id);
-      
-      // Try to find project-related API endpoints
-      const endpoints = [
-        'projects',
-        'workspaces', 
-        'user_projects',
-        'gpts',
-        'assistants'
-      ];
-      
-      for (const ep of endpoints) {
-        try {
-          console.log(`[Spool] DEBUG - Trying /${ep}...`);
-          const resp = await apiGet(ep, token);
-          console.log(`[Spool] DEBUG - /${ep} response:`, resp);
-        } catch(e) {
-          console.log(`[Spool] DEBUG - /${ep} error:`, e.message);
-        }
-      }
 
     if (!items.length) break;
     conversations.push(...items);
@@ -364,7 +437,7 @@ const SPOOL_STYLES = `<style>
   #spool-overlay .spool-header { display:flex;align-items:center;gap:12px;padding:12px 16px 20px 20px;border-bottom:1px solid #1e293b;margin:0 -20px 0 -20px }
   #spool-overlay .spool-logo { font-size:32px }
   #spool-overlay .spool-title-area h2 { color:#f8fafc;font-size:24px;margin:0 }
-  #spool-overlay .spool-subtitle { color:#64748b;font-size:14px;margin:4px 0 0 }
+  #spool-overlay .spool-title-area .spool-subtitle { color:#64748b;font-size:14px;margin:4px 0 0 }
   #spool-overlay .spool-close { margin-left:auto;background:none;border:none;color:#94a3b8;font-size:28px;cursor:pointer;padding:4px 8px }
   #spool-overlay .spool-close:hover { color:#fff }
   #spool-overlay .spool-toolbar { display:flex;gap:12px;padding:16px 0;border-bottom:1px solid #1e293b;flex-wrap:wrap;align-items:center;margin:0 -20px;padding-left:20px;padding-right:20px }
@@ -383,16 +456,36 @@ const SPOOL_STYLES = `<style>
   #spool-overlay .spool-error { color:#fecaca;font-size:16px;text-align:center;margin-top:48px }
   #spool-overlay .spool-error-icon { font-size:36px;margin-bottom:12px }
   #spool-overlay .spool-error-msg { color:#f87171;font-size:14px;max-width:300px;margin:0 auto }
-  #spool-overlay .spool-conv-item { display:flex;gap:12px;align-items:flex-start;padding:16px;border-radius:8px;cursor:pointer;margin-bottom:8px }
+  
+  /* Section headers */
+  #spool-overlay .spool-section-header { color:#64748b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;padding:12px 0 8px;margin-top:8px;border-top:1px solid #1e293b }
+  #spool-overlay .spool-section-header:first-child { margin-top:0;border-top:none }
+  
+  /* Projects */
+  #spool-overlay .spool-project { margin-bottom:12px }
+  #spool-overlay .spool-project-header { display:flex;align-items:center;gap:8px;padding:12px 16px;background:#1e293b;border-radius:8px;cursor:pointer;border-left:3px solid #3b82f6;transition:background 0.2s }
+  #spool-overlay .spool-project-header:hover { background:#334155 }
+  #spool-overlay .spool-project-toggle { background:none;border:none;color:#64748b;font-size:14px;cursor:pointer;padding:0;width:16px;text-align:left }
+  #spool-overlay .spool-project-emoji { font-size:18px }
+  #spool-overlay .spool-project-name { color:#e2e8f0;font-size:15px;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+  #spool-overlay .spool-project-count { background:#334155;color:#94a3b8;font-size:12px;padding:2px 8px;border-radius:12px;margin-left:auto }
+  #spool-overlay .spool-project-checkbox { accent-color:#3b82f6;width:18px;height:18px;cursor:pointer }
+  #spool-overlay .spool-project-conversations { margin-left:12px;margin-top:8px }
+  
+  /* Conversations */
+  #spool-overlay .spool-conv-item { display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:8px;cursor:pointer;margin-bottom:4px }
   #spool-overlay .spool-conv-item:hover { background:#1e293b }
   #spool-overlay .spool-conv-item.selected { background:#1e3a5f }
   #spool-overlay .spool-conv-item input[type="checkbox"] { margin-top:3px;accent-color:#3b82f6;width:18px;height:18px;cursor:pointer;flex-shrink:0 }
   #spool-overlay .spool-conv-info { flex:1;min-width:0 }
   #spool-overlay .spool-conv-title { color:#e2e8f0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
   #spool-overlay .spool-conv-meta { color:#64748b;font-size:13px;margin-top:4px }
+  
+  /* Preview */
   #spool-overlay .spool-preview-header { padding:20px;border-bottom:1px solid #1e293b;margin:0 -20px 16px -20px;background:#1e293b }
   #spool-overlay .spool-preview-header h3 { color:#f8fafc;font-size:18px;margin:0 0 6px }
   #spool-overlay .spool-preview-header .date { color:#64748b;font-size:14px }
+  #spool-overlay .spool-preview-header .project-badge { display:inline-block;background:#3b82f6;color:#fff;font-size:12px;padding:2px 8px;border-radius:4px;margin-top:6px }
   #spool-overlay .spool-preview-body { font-size:14px;color:#94a3b8;line-height:1.6;white-space:pre-wrap;word-break:break-word;padding:0 20px }
   #spool-overlay .spool-preview-body .msg { margin-bottom:16px }
   #spool-overlay .spool-preview-body .role-user { color:#3b82f6;font-weight:600 }
@@ -400,6 +493,8 @@ const SPOOL_STYLES = `<style>
   #spool-overlay .spool-preview-files { margin-top:12px;padding:12px;border:1px solid #334155;border-radius:8px;margin:0 20px }
   #spool-overlay .spool-preview-files h4 { color:#94a3b8;font-size:14px;margin-bottom:8px }
   #spool-overlay .spool-preview-files span { display:inline-block;background:#1e293b;border-radius:4px;padding:4px 10px;font-size:13px;color:#94a3b8;margin:2px }
+  
+  /* Footer */
   #spool-overlay .spool-footer { display:flex;align-items:center;justify-content:space-between;padding:20px 0 0;border-top:1px solid #1e293b;flex-wrap:wrap;gap:12px;margin:0 -20px;padding-left:20px;padding-right:20px }
   #spool-overlay .spool-stats { color:#94a3b8;font-size:15px;padding:12px 0 }
   #spool-overlay .spool-actions { display:flex;gap:12px;padding:8px 0 }
@@ -527,76 +622,248 @@ function createOverlay() {
     return;
   }
 
-  showLoading("Loading conversations...");
+  showLoading("Loading projects and conversations...");
 
-  // Fetch conversations
-  let conversations = [];
+  // Fetch projects and personal conversations in parallel
+  let projects = [];
+  let personalConversations = [];
+  
   try {
-    conversations = await fetchConversations(token);
+    const [projectsData, personalData] = await Promise.all([
+      fetchProjects(token),
+      fetchConversations(token),
+    ]);
+    projects = projectsData;
+    personalConversations = personalData;
   } catch (e) {
     showError(`Failed to load: ${e.message}`, true);
     return;
   }
 
-  if (!conversations.length) {
-    showError("No conversations found.", false);
-    return;
+  // Fetch all conversations for each project
+  showLoading(`Loading project conversations... 0/${projects.length}`);
+  
+  for (let i = 0; i < projects.length; i++) {
+    const project = projects[i];
+    console.log(`[Spool] Fetching conversations for project: ${project.name}`);
+    
+    try {
+      const convos = await fetchAllProjectConversations(project.id, token);
+      project.conversations = convos;
+      console.log(`[Spool] Project ${project.name}: ${convos.length} conversations`);
+    } catch (e) {
+      console.error(`[Spool] Error fetching conversations for ${project.name}:`, e);
+      project.conversations = [];
+    }
+    
+    showLoading(`Loading project conversations... ${i + 1}/${projects.length}`);
+    await sleep(DELAY);
   }
 
-  console.log(`[Spool] Loaded ${conversations.length} conversations`);
+  // Calculate totals
+  const totalProjectConvs = projects.reduce((sum, p) => sum + p.conversations.length, 0);
+  const totalPersonal = personalConversations.length;
+  
+  console.log(`[Spool] Loaded ${projects.length} projects (${totalProjectConvs} conversations) + ${totalPersonal} personal conversations`);
 
   // State
   const state = {
-    all: conversations,
+    projects: projects,
+    personal: personalConversations,
     selected: loadSelections(),
-    filtered: conversations,
     activeId: null,
+    filter: "all", // 'all', 'personal', or project ID
+    searchQuery: "",
   };
 
-  // Filter
-  function filterConversations() {
-    const q = document.getElementById("spool-search").value.toLowerCase();
-    const preset = document.getElementById("spool-date-filter").value;
-    state.filtered = state.all.filter((c) => {
-      const matchDate = dateFilter(c, preset);
-      const matchSearch = !q || (c.title || "").toLowerCase().includes(q);
-      return matchDate && matchSearch;
-    });
-    renderList();
+  // Filter function
+  function getFilteredData() {
+    if (state.filter === "all") {
+      return {
+        projects: state.projects,
+        personal: state.personal.filter(filterBySearch),
+      };
+    } else if (state.filter === "personal") {
+      return {
+        projects: [],
+        personal: state.personal.filter(filterBySearch),
+      };
+    } else {
+      const project = state.projects.find(p => p.id === state.filter);
+      return {
+        projects: project ? [{
+          ...project,
+          conversations: project.conversations.filter(filterBySearch),
+        }] : [],
+        personal: [],
+      };
+    }
+  }
+
+  function filterBySearch(conv) {
+    const q = state.searchQuery.toLowerCase();
+    if (!q) return true;
+    return (conv.title || "").toLowerCase().includes(q);
   }
 
   // Render list
   function renderList() {
     const list = document.getElementById("spool-list");
-    list.innerHTML = state.filtered
-      .map((c) => {
-        const sel = state.selected.has(c.id);
-        const files = c.has_files || c.attachment_count || 0;
-        const date = formatDate(c.update_time || c.id);
-        const msgs = c.num_total_messages || c.message_count || "?";
-        return `<div class="spool-conv-item${sel ? " selected" : ""}" data-id="${c.id}">
-          <input type="checkbox"${sel ? " checked" : ""} data-cb="${c.id}">
-          <div class="spool-conv-info">
-            <div class="spool-conv-title">${escapeHtml(c.title || "Untitled")}</div>
-            <div class="spool-conv-meta">${date} · ${msgs} msgs${files ? ` · ${files} files` : ""}</div>
+    const filtered = getFilteredData();
+    
+    let html = "";
+    
+    // Projects section
+    if (filtered.projects.length > 0 && state.filter !== "personal") {
+      html += `<div class="spool-section-header">📁 Projects</div>`;
+      
+      for (const project of filtered.projects) {
+        const isOpen = state.selected.has(`project:${project.id}`);
+        const emoji = project.emoji || "📁";
+        const theme = project.theme || "#3b82f6";
+        
+        html += `
+          <div class="spool-project" data-project="${project.id}">
+            <div class="spool-project-header" style="border-left-color: ${theme}">
+              <button class="spool-project-toggle">${isOpen ? "▼" : "▶"}</button>
+              <span class="spool-project-emoji">${emoji}</span>
+              <span class="spool-project-name">${escapeHtml(project.name)}</span>
+              <span class="spool-project-count">${project.conversations.length}</span>
+              <input type="checkbox" class="spool-project-checkbox"${isOpen ? " checked" : ""} data-project="${project.id}">
+            </div>
+            ${isOpen ? `
+              <div class="spool-project-conversations">
+                ${project.conversations.map((c) => {
+                  const sel = state.selected.has(c.id);
+                  const date = formatDate(c.update_time || c.create_time);
+                  return `
+                    <div class="spool-conv-item${sel ? " selected" : ""}" data-id="${c.id}" data-project="${project.id}">
+                      <input type="checkbox"${sel ? " checked" : ""} data-cb="${c.id}">
+                      <div class="spool-conv-info">
+                        <div class="spool-conv-title">${escapeHtml(c.title || "Untitled")}</div>
+                        <div class="spool-conv-meta">${date}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+            ` : ""}
           </div>
-        </div>`;
-      })
-      .join("");
+        `;
+      }
+    }
+    
+    // Personal conversations section
+    if (filtered.personal.length > 0 && state.filter !== "projects") {
+      const sectionTitle = state.filter === "all" ? "📄 Personal Conversations" : "";
+      if (sectionTitle) {
+        html += `<div class="spool-section-header">${sectionTitle}</div>`;
+      }
+      
+      html += filtered.personal
+        .map((c) => {
+          const sel = state.selected.has(c.id);
+          const files = c.has_files || c.attachment_count || 0;
+          const date = formatDate(c.update_time || c.create_time);
+          const msgs = c.num_total_messages || c.message_count || "?";
+          return `
+            <div class="spool-conv-item${sel ? " selected" : ""}" data-id="${c.id}">
+              <input type="checkbox"${sel ? " checked" : ""} data-cb="${c.id}">
+              <div class="spool-conv-info">
+                <div class="spool-conv-title">${escapeHtml(c.title || "Untitled")}</div>
+                <div class="spool-conv-meta">${date} · ${msgs} msgs${files ? ` · ${files} files` : ""}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+    
+    if (filtered.projects.length === 0 && filtered.personal.length === 0) {
+      html = `<div class="spool-empty">No conversations found</div>`;
+    }
+    
+    list.innerHTML = html;
 
     // Event handlers
     list.querySelectorAll("input[type=checkbox]").forEach((cb) => {
       cb.addEventListener("change", (e) => {
-        const id = e.target.dataset.cb;
-        if (e.target.checked) {
-          state.selected.add(id);
-          e.target.closest(".spool-conv-item").classList.add("selected");
+        e.stopPropagation();
+        
+        if (cb.classList.contains("spool-project-checkbox")) {
+          // Toggle entire project
+          const projectId = cb.dataset.project;
+          const project = state.projects.find(p => p.id === projectId);
+          
+          if (cb.checked) {
+            state.selected.add(`project:${projectId}`);
+            project.conversations.forEach(c => state.selected.add(c.id));
+          } else {
+            state.selected.delete(`project:${projectId}`);
+            project.conversations.forEach(c => state.selected.delete(c.id));
+          }
+          
+          saveSelections(state.selected);
+          renderList();
+          updateStats();
         } else {
-          state.selected.delete(id);
-          e.target.closest(".spool-conv-item").classList.remove("selected");
+          // Toggle individual conversation
+          const id = cb.dataset.cb;
+          if (cb.checked) {
+            state.selected.add(id);
+            cb.closest(".spool-conv-item")?.classList.add("selected");
+          } else {
+            state.selected.delete(id);
+            cb.closest(".spool-conv-item")?.classList.remove("selected");
+            
+            // Update project checkbox if needed
+            const convProject = cb.closest(".spool-project");
+            if (convProject) {
+              const projectId = convProject.dataset.project;
+              const project = state.projects.find(p => p.id === projectId);
+              const allSelected = project.conversations.every(c => state.selected.has(c.id));
+              const projectCb = convProject.querySelector(".spool-project-checkbox");
+              if (projectCb) {
+                projectCb.checked = allSelected;
+                if (allSelected) {
+                  state.selected.add(`project:${projectId}`);
+                } else {
+                  state.selected.delete(`project:${projectId}`);
+                }
+              }
+            }
+          }
+          saveSelections(state.selected);
+          updateStats();
         }
+      });
+    });
+    
+    // Project toggle handlers
+    list.querySelectorAll(".spool-project-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const projectEl = btn.closest(".spool-project");
+        const projectId = projectEl.dataset.project;
+        
+        if (state.selected.has(`project:${projectId}`)) {
+          state.selected.delete(`project:${projectId}`);
+        } else {
+          state.selected.add(`project:${projectId}`);
+        }
+        
         saveSelections(state.selected);
+        renderList();
         updateStats();
+      });
+    });
+    
+    // Conversation click for preview
+    list.querySelectorAll(".spool-conv-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        if (e.target.tagName !== "INPUT") {
+          renderPreview(item.dataset.id);
+        }
       });
     });
   }
@@ -604,22 +871,38 @@ function createOverlay() {
   // Render preview
   function renderPreview(id) {
     const preview = document.getElementById("spool-preview");
-    const conv = state.all.find((c) => c.id === id);
+    
+    // Find conversation in projects or personal
+    let conv = null;
+    let project = null;
+    
+    for (const p of state.projects) {
+      conv = p.conversations.find(c => c.id === id);
+      if (conv) {
+        project = p;
+        break;
+      }
+    }
+    
+    if (!conv) {
+      conv = state.personal.find(c => c.id === id);
+    }
+    
     if (!conv) {
       preview.innerHTML = '<div class="spool-preview-empty">Not found</div>';
       return;
     }
 
     state.activeId = id;
-    const date = formatDate(conv.update_time || conv.id);
+    const date = formatDate(conv.update_time || conv.create_time);
     const title = escapeHtml(conv.title || "Untitled");
-    const files = conv.has_files || conv.attachment_count || 0;
-    const msgs = conv.num_total_messages || conv.message_count || "?";
+    const projectName = project ? `<div class="project-badge">${project.emoji || "📁"} ${escapeHtml(project.name)}</div>` : "";
 
     preview.innerHTML = `
       <div class="spool-preview-header">
         <h3>${title}</h3>
-        <div class="date">${date} · ${msgs} msgs</div>
+        ${projectName}
+        <div class="date">${date}</div>
       </div>
       <div class="spool-preview-body" id="spool-preview-content">
         <div class="spool-preview-empty">Loading...</div>
@@ -680,12 +963,25 @@ function createOverlay() {
     const count = state.selected.size;
     let msgs = 0;
     let files = 0;
-    state.all.forEach((c) => {
+    
+    // Count from projects
+    state.projects.forEach((p) => {
+      p.conversations.forEach((c) => {
+        if (state.selected.has(c.id)) {
+          msgs += c.num_total_messages || c.message_count || 0;
+          files += c.has_files || c.attachment_count || 0;
+        }
+      });
+    });
+    
+    // Count from personal
+    state.personal.forEach((c) => {
       if (state.selected.has(c.id)) {
         msgs += c.num_total_messages || c.message_count || 0;
         files += c.has_files || c.attachment_count || 0;
       }
     });
+    
     const stats = `${count} selected${msgs ? ` · ${msgs} msgs` : ""}${files ? ` · ${files} files` : ""}`;
     document.getElementById("spool-stats").textContent = stats;
     const btn = document.getElementById("spool-export");
@@ -696,28 +992,39 @@ function createOverlay() {
   // Events
   document.getElementById("spool-close-btn").onclick = () => overlay.remove();
   document.getElementById("spool-cancel").onclick = () => overlay.remove();
-  document.getElementById("spool-search").addEventListener("input", filterConversations);
-  document.getElementById("spool-date-filter").addEventListener("change", filterConversations);
+  
+  document.getElementById("spool-search").addEventListener("input", (e) => {
+    state.searchQuery = e.target.value;
+    renderList();
+  });
+  
+  document.getElementById("spool-date-filter").addEventListener("change", (e) => {
+    // Could implement date filtering per project if needed
+    renderList();
+  });
+  
   document.getElementById("spool-select-all").onclick = () => {
-    state.filtered.forEach((c) => state.selected.add(c.id));
+    const filtered = getFilteredData();
+    filtered.projects.forEach(p => {
+      p.conversations.forEach(c => state.selected.add(c.id));
+      state.selected.add(`project:${p.id}`);
+    });
+    filtered.personal.forEach(c => state.selected.add(c.id));
     saveSelections(state.selected);
     renderList();
     updateStats();
   };
+  
   document.getElementById("spool-select-none").onclick = () => {
     state.selected.clear();
     saveSelections(state.selected);
     renderList();
     updateStats();
   };
-  document.getElementById("spool-list").addEventListener("dblclick", (e) => {
-    const item = e.target.closest(".spool-conv-item");
-    if (item) renderPreview(item.dataset.id);
-  });
 
   // Export
   document.getElementById("spool-export").onclick = async () => {
-    const selectedIds = [...state.selected];
+    const selectedIds = [...state.selected].filter(id => !id.startsWith("project:"));
     if (!selectedIds.length) return;
 
     const progressArea = document.getElementById("spool-progress-area");
@@ -732,8 +1039,25 @@ function createOverlay() {
 
     for (let i = 0; i < total; i++) {
       const cid = selectedIds[i];
-      const conv = state.all.find((c) => c.id === cid);
-      const title = sanitize(conv?.title || "Untitled");
+      
+      // Find conversation and its project
+      let conv = null;
+      let project = null;
+      
+      for (const p of state.projects) {
+        conv = p.conversations.find(c => c.id === cid);
+        if (conv) {
+          project = p;
+          break;
+        }
+      }
+      
+      if (!conv) {
+        conv = state.personal.find(c => c.id === cid);
+      }
+      
+      const projectName = project ? `[${project.name}] ` : "";
+      const title = sanitize(projectName + (conv?.title || "Untitled"));
       const fname = `${title}_${cid.slice(0, 8)}`;
       const pct = Math.round(((i + 1) / total) * 100);
       bar.style.width = pct + "%";
@@ -746,7 +1070,7 @@ function createOverlay() {
 
         const mapping = convo.mapping || {};
         const rootId = Object.keys(mapping).find((k) => !mapping[k].parent);
-        const lines = [`# ${conv?.title || "Untitled"}`, ""];
+        const lines = [`# ${projectName}${conv?.title || "Untitled"}`, ""];
         if (conv?.create_time) lines.push(`*${formatDate(conv.create_time)}*\n`);
 
         if (rootId) {
