@@ -151,7 +151,7 @@
           <div class="spool-project" data-project="${project.id}">
             <div class="spool-project-header" style="border-left-color: ${theme}">
               <button class="spool-project-toggle">${isOpen ? "▼" : "▶"}</button>
-              <span class="spool-project-emoji">${emoji}</span>
+              <span class="spool-project-emoji">📂</span>
               <span class="spool-project-name">${escapeHtml(project.name)}</span>
               <span class="spool-project-count">${project.conversations.length}</span>
               <input type="checkbox" class="spool-project-checkbox"${allSelected ? " checked" : ""} data-project="${project.id}">
